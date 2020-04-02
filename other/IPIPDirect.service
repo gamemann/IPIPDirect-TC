@@ -4,7 +4,7 @@ After=network-online.target
 Requires=network-online.target
 
 [Service]
-ExecStart=/usr/bin/IPIPDirect ens18
+ExecStart=/usr/bin/IPIPDirect_loader ens18
 Restart=always
 
 [Install]
