@@ -1,0 +1,11 @@
+[Unit]
+Description=IPIP Direct TC program.
+After=network-online.target
+Requires=network-online.target
+
+[Service]
+ExecStart=/usr/bin/IPIPDirect ens18
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
