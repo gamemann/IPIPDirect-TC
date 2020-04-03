@@ -55,5 +55,7 @@ Kernel >= 5.3 is required for this. Newer kernels add the `BPF_ADJ_ROOM_MAC` mod
 ## Notes
 When compiling, you may need to copy `/usr/src/linux-headers-xxx/include/uapi/linux/bpf.h` to `/usr/include/linux/bpf.h`. For some reason, newer kernels don't have an up-to-date `/usr/include/linux/bpf.h` file. I'm unsure if this is intentional or a bug. However, I got the program to compile properly by copying that file.
 
+**Update** - Apparently this is only a bug on Ubuntu.
+
 ## Credits
 * [Christian Deacon](https://www.linkedin.com/in/christian-deacon-902042186/) - Creator
