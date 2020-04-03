@@ -98,93 +98,93 @@ int open_map(const char *name)
 int tc_egress_attach_bpf(const char *dev, const char *bpf_obj, const char *sec_name)
 {
     // Initialize variables.
-	char cmd[CMD_MAX];
-	int ret = 0;
+    char cmd[CMD_MAX];
+    int ret = 0;
 
-	// Delete clsact which also deletes existing filters.
-
-    // Set cmd to all 0's.
-	memset(&cmd, 0, CMD_MAX);
-
-    // Format command.
-	snprintf(cmd, CMD_MAX, "%s qdisc del dev %s clsact 2> /dev/null", tc_cmd, dev);
-
-    // Call system command.
-	ret = system(cmd);
-
-    // Check if command executed.
-	if (!WIFEXITED(ret)) 
-    {
-		fprintf(stderr, "Error attaching TC egress filter. Cannot execute TC command when removing clsact. Command => %s and Return Error Number => %d.\n", cmd, WEXITSTATUS(ret));
-	}
-
-	// Create clsact.
+    // Delete clsact which also deletes existing filters.
 
     // Set cmd to all 0's.
-	memset(&cmd, 0, CMD_MAX);
+    memset(&cmd, 0, CMD_MAX);
 
     // Format command.
-	snprintf(cmd, CMD_MAX, "%s qdisc add dev %s clsact", tc_cmd, dev);
+    snprintf(cmd, CMD_MAX, "%s qdisc del dev %s clsact 2> /dev/null", tc_cmd, dev);
 
     // Call system command.
-	ret = system(cmd);
+    ret = system(cmd);
 
     // Check if command executed.
-	if (ret) 
+    if (!WIFEXITED(ret)) 
     {
-		fprintf(stderr, "Error attaching TC egress filter. TC cannot create a clsact. Command => %s and Return Error Number => %d.\n", cmd, WEXITSTATUS(ret));
-		
+        fprintf(stderr, "Error attaching TC egress filter. Cannot execute TC command when removing clsact. Command => %s and Return Error Number => %d.\n", cmd, WEXITSTATUS(ret));
+    }
+
+    // Create clsact.
+
+    // Set cmd to all 0's.
+    memset(&cmd, 0, CMD_MAX);
+
+    // Format command.
+    snprintf(cmd, CMD_MAX, "%s qdisc add dev %s clsact", tc_cmd, dev);
+
+    // Call system command.
+    ret = system(cmd);
+
+    // Check if command executed.
+    if (ret) 
+    {
+        fprintf(stderr, "Error attaching TC egress filter. TC cannot create a clsact. Command => %s and Return Error Number => %d.\n", cmd, WEXITSTATUS(ret));
+
         exit(1);
-	}
+    }
 
-	// Attach to egress filter.
+    // Attach to egress filter.
 
     // Set cmd to all 0's.
-	memset(&cmd, 0, CMD_MAX);
+    memset(&cmd, 0, CMD_MAX);
 
     // Format command.
-	snprintf(cmd, CMD_MAX, "%s filter add dev %s egress prio 1 handle 1 bpf da obj %s sec %s", tc_cmd, dev, bpf_obj, sec_name);
+    snprintf(cmd, CMD_MAX, "%s filter add dev %s egress prio 1 handle 1 bpf da obj %s sec %s", tc_cmd, dev, bpf_obj, sec_name);
 
     // Call system command.
-	ret = system(cmd);
+    ret = system(cmd);
 
     // Check if command executed.
-	if (ret) 
+    if (ret) 
     {
-		fprintf(stderr, "Error attaching TC egress filter. TC cannot attach to filter. Command => %s and Return Error Number => %d.\n", cmd, WEXITSTATUS(ret));
+        fprintf(stderr, "Error attaching TC egress filter. TC cannot attach to filter. Command => %s and Return Error Number => %d.\n", cmd, WEXITSTATUS(ret));
 
-		exit(1);
-	}
+        exit(1);
+    }
 
     // Return error or not.
-	return ret;
+    return ret;
 }
 
 int tc_remove_egress_filter(const char* dev)
 {
     // Initialize starting variables.
-	char cmd[CMD_MAX];
-	int ret = 0;
+    char cmd[CMD_MAX];
+    int ret = 0;
 
     // Set cmd to all 0's.
-	memset(&cmd, 0, CMD_MAX);
+    memset(&cmd, 0, CMD_MAX);
 
     // Format command.
-	snprintf(cmd, CMD_MAX, "%s filter delete dev %s egress", tc_cmd, dev);
+    snprintf(cmd, CMD_MAX, "%s filter delete dev %s egress", tc_cmd, dev);
 
     // Call system command.
-	ret = system(cmd);
+    ret = system(cmd);
 
     // Check if command executed.
-	if (ret) 
+    if (ret) 
     {
-		fprintf(stderr, "Error detaching TC egress filter. Command => %s and Return Error Number => %d.\n", cmd, ret);
-		
+        fprintf(stderr, "Error detaching TC egress filter. Command => %s and Return Error Number => %d.\n", cmd, ret);
+
         exit(1);
-	}
+    }
 
     // Return error or not.
-	return ret;
+    return ret;
 }
 
 int main(int argc, char *argv[])
