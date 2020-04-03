@@ -32,16 +32,6 @@ struct bpf_elf_map
     __u32 inner_idx;
 };
 
-// Interface map for interface's IP address in decimal.
-struct bpf_elf_map SEC("maps") interface_map =
-{
-    .type = BPF_MAP_TYPE_ARRAY,
-    .size_key = sizeof(uint32_t),
-    .size_value = sizeof(uint32_t),
-    .max_elem = 1,
-    .pinning = PIN_GLOBAL_NS
-};
-
 // MAC map for gateway interface's MAC address. The program only worked for me if I had the Ethernet header's destination MAC address set to the gateway.
 struct bpf_elf_map SEC("maps") mac_map =
 {
@@ -96,171 +86,155 @@ int tc_egress(struct __sk_buff *skb)
             uint32_t oldAddr;
             oldAddr = inner_ip->saddr;
 
-            // Get interface IP from BPF map.
-            uint32_t *IP;
-            uint32_t key = 0;
+            // Initialize offset.
+            int offset;
 
-            IP = bpf_map_lookup_elem(&interface_map, &key);
+            // Save forwarding address.
+            uint32_t forwardAddr = iphdr->daddr;
 
-            // Check IP.
-            if (!IP)
+            // Remove outer IP header and check if it was successful.
+            if (bpf_skb_adjust_room(skb, -(int)sizeof(struct iphdr), BPF_ADJ_ROOM_MAC, 0) != 0)
+            {
+                return TC_ACT_SHOT;
+            }
+            
+            // Reinitialize values.
+            data_end = (void *)(long)skb->data_end;
+            data = (void *)(long)skb->data;
+            iphdr = data + sizeof(struct ethhdr);
+
+            // Check IP header length.
+            if (iphdr + 1 > (struct iphdr *)data_end)
             {
                 return TC_ACT_OK;
             }
 
-            // Check source address and see if it matches interface's IP.
-            if (iphdr->saddr == *IP)
+            // Recalculate layer three checksum (IP header).
+            offset = sizeof(struct ethhdr) + offsetof(struct iphdr, check);
+            bpf_l3_csum_replace(skb, offset, oldAddr, forwardAddr, sizeof(forwardAddr));
+
+            // Reinitialize values.
+            data_end = (void *)(long)skb->data_end;
+            data = (void *)(long)skb->data;
+            iphdr = data + sizeof(struct ethhdr);
+
+            // Check IP header length.
+            if (iphdr + 1 > (struct iphdr *)data_end)
             {
-                // Initialize offset.
-                int offset;
+                return TC_ACT_OK;
+            }
+            
+            // Change source address to forwarding address.
+            offset = sizeof(struct ethhdr) + offsetof(struct iphdr, saddr);
+            bpf_skb_store_bytes(skb, offset, &forwardAddr, sizeof(forwardAddr), 0);
 
-                // Save forwarding address.
-                uint32_t forwardAddr = iphdr->daddr;
+            // Reinitialize values.
+            data_end = (void *)(long)skb->data_end;
+            data = (void *)(long)skb->data;
+            iphdr = data + sizeof(struct ethhdr);
 
-                // Remove outer IP header and check if it was successful.
-                if (bpf_skb_adjust_room(skb, -(int)sizeof(struct iphdr), BPF_ADJ_ROOM_MAC, 0) != 0)
+            // Check IP header length.
+            if (iphdr + 1 > (struct iphdr *)data_end)
+            {
+                return TC_ACT_OK;
+            }
+
+            // Check for gateway address from BPF map.
+            uint64_t *val;
+            uint32_t key = 0;
+
+            val = bpf_map_lookup_elem(&mac_map, &key);
+
+            if (!val)
+            {
+                // Print debug message. This can be found by performing 'cat /sys/kernel/debug/tracing/trace_pipe'.
+                printk("MAC map bad value.\n");
+
+                return TC_ACT_OK;
+            }
+
+            uint8_t dstMAC[ETH_ALEN];
+
+            int2mac(*val, dstMAC);
+
+            // Get offset of destination MAC in Ethernet header.
+            offset = offsetof(struct ethhdr, h_dest);
+
+            // Replace destination MAC.
+            bpf_skb_store_bytes(skb, offset, &dstMAC, ETH_ALEN, 0);
+
+            // Reinitialize values.
+            data_end = (void *)(long)skb->data_end;
+            data = (void *)(long)skb->data;
+            iphdr = data + sizeof(struct ethhdr);
+
+            // Check IP header length.
+            if (iphdr + 1 > (struct iphdr *)data_end)
+            {
+                return TC_ACT_OK;
+            }
+
+            // Recalculate transport protocol header.
+            switch (iphdr->protocol)
+            {
+                case IPPROTO_UDP:
                 {
-                    return TC_ACT_SHOT;
-                }
-                
-                // Reinitialize values.
-                data_end = (void *)(long)skb->data_end;
-                data = (void *)(long)skb->data;
-                iphdr = data + sizeof(struct ethhdr);
+                    // Initialize UDP header.
+                    struct udphdr *udphdr = data + sizeof(struct ethhdr) + (iphdr->ihl * 4);
 
-                // Check IP header length.
-                if (iphdr + 1 > (struct iphdr *)data_end)
-                {
-                    return TC_ACT_OK;
-                }
-
-                // Recalculate layer three checksum (IP header).
-                offset = sizeof(struct ethhdr) + offsetof(struct iphdr, check);
-                bpf_l3_csum_replace(skb, offset, oldAddr, forwardAddr, sizeof(forwardAddr));
-
-                // Reinitialize values.
-                data_end = (void *)(long)skb->data_end;
-                data = (void *)(long)skb->data;
-                iphdr = data + sizeof(struct ethhdr);
-
-                // Check IP header length.
-                if (iphdr + 1 > (struct iphdr *)data_end)
-                {
-                    return TC_ACT_OK;
-                }
-                
-                // Change source address to forwarding address.
-                offset = sizeof(struct ethhdr) + offsetof(struct iphdr, saddr);
-                bpf_skb_store_bytes(skb, offset, &forwardAddr, sizeof(forwardAddr), 0);
-
-                // Reinitialize values.
-                data_end = (void *)(long)skb->data_end;
-                data = (void *)(long)skb->data;
-                iphdr = data + sizeof(struct ethhdr);
-
-                // Check IP header length.
-                if (iphdr + 1 > (struct iphdr *)data_end)
-                {
-                    return TC_ACT_OK;
-                }
-
-                // Check for gateway address from BPF map.
-                uint64_t *val;
-                uint32_t key = 0;
-
-                val = bpf_map_lookup_elem(&mac_map, &key);
-
-                if (!val)
-                {
-                    // Print debug message. This can be found by performing 'cat /sys/kernel/debug/tracing/trace_pipe'.
-                    printk("MAC map bad value.\n");
-
-                    return TC_ACT_OK;
-                }
-
-                uint8_t dstMAC[ETH_ALEN];
-
-                int2mac(*val, dstMAC);
-
-                // Get offset of destination MAC in Ethernet header.
-                offset = offsetof(struct ethhdr, h_dest);
-
-                // Replace destination MAC.
-                bpf_skb_store_bytes(skb, offset, &dstMAC, ETH_ALEN, 0);
-
-                // Reinitialize values.
-                data_end = (void *)(long)skb->data_end;
-                data = (void *)(long)skb->data;
-                iphdr = data + sizeof(struct ethhdr);
-
-                // Check IP header length.
-                if (iphdr + 1 > (struct iphdr *)data_end)
-                {
-                    return TC_ACT_OK;
-                }
-
-                // Recalculate transport protocol header.
-                switch (iphdr->protocol)
-                {
-                    case IPPROTO_UDP:
+                    // Check UDP header length.
+                    if (udphdr + 1 > (struct udphdr *)data_end)
                     {
-                        // Initialize UDP header.
-                        struct udphdr *udphdr = data + sizeof(struct ethhdr) + (iphdr->ihl * 4);
-
-                        // Check UDP header length.
-                        if (udphdr + 1 > (struct udphdr *)data_end)
-                        {
-                            return TC_ACT_SHOT;
-                        }
-
-                        // Get UDP header checksum's offset.
-                        offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct udphdr, check);
-
-                        // Recalculate layer four checksum (UDP checksum).
-                        bpf_l4_csum_replace(skb, offset, oldAddr, iphdr->saddr, 0x10 | sizeof(iphdr->saddr));
-
-                        break;
+                        return TC_ACT_SHOT;
                     }
 
-                    case IPPROTO_TCP:
+                    // Get UDP header checksum's offset.
+                    offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct udphdr, check);
+
+                    // Recalculate layer four checksum (UDP checksum).
+                    bpf_l4_csum_replace(skb, offset, oldAddr, iphdr->saddr, 0x10 | sizeof(iphdr->saddr));
+
+                    break;
+                }
+
+                case IPPROTO_TCP:
+                {
+                    // Initialize TCP header.
+                    struct tcphdr *tcphdr = data + sizeof(struct ethhdr) + (iphdr->ihl * 4);
+
+                    // Check TCP header length.
+                    if (tcphdr + 1 > (struct tcphdr *)data_end)
                     {
-                        // Initialize TCP header.
-                        struct tcphdr *tcphdr = data + sizeof(struct ethhdr) + (iphdr->ihl * 4);
-
-                        // Check TCP header length.
-                        if (tcphdr + 1 > (struct tcphdr *)data_end)
-                        {
-                            return TC_ACT_SHOT;
-                        }
-
-                        // Get TCP header checksum's offset.
-                        offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct tcphdr, check);
-
-                        // Recalculate layer four checksum (TCP checksum).
-                        bpf_l4_csum_replace(skb, offset, oldAddr, iphdr->saddr, 0x10 | sizeof(iphdr->saddr));
-
-                        break;
+                        return TC_ACT_SHOT;
                     }
 
-                    case IPPROTO_ICMP:
+                    // Get TCP header checksum's offset.
+                    offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct tcphdr, check);
+
+                    // Recalculate layer four checksum (TCP checksum).
+                    bpf_l4_csum_replace(skb, offset, oldAddr, iphdr->saddr, 0x10 | sizeof(iphdr->saddr));
+
+                    break;
+                }
+
+                case IPPROTO_ICMP:
+                {
+                    // Initialize ICMP header.
+                    struct icmphdr *icmphdr = data + sizeof(struct ethhdr) + (iphdr->ihl * 4);
+
+                    // Check ICMP header length.
+                    if (icmphdr + 1 > (struct icmphdr *)data_end)
                     {
-                        // Initialize ICMP header.
-                        struct icmphdr *icmphdr = data + sizeof(struct ethhdr) + (iphdr->ihl * 4);
-
-                        // Check ICMP header length.
-                        if (icmphdr + 1 > (struct icmphdr *)data_end)
-                        {
-                            return TC_ACT_SHOT;
-                        }
-
-                        // Get ICMP header checksum's offset.
-                        offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct icmphdr, checksum);
-
-                        // Recalculate layer four checksum (ICMP header).
-                        bpf_l4_csum_replace(skb, offset, oldAddr, iphdr->saddr, 0x10 | sizeof(iphdr->saddr));
-
-                        break;
+                        return TC_ACT_SHOT;
                     }
+
+                    // Get ICMP header checksum's offset.
+                    offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct icmphdr, checksum);
+
+                    // Recalculate layer four checksum (ICMP header).
+                    bpf_l4_csum_replace(skb, offset, oldAddr, iphdr->saddr, 0x10 | sizeof(iphdr->saddr));
+
+                    break;
                 }
             }
         }

@@ -26,7 +26,6 @@
 
 // Initialize static variables.
 static uint8_t cont = 1;
-static int interface_map_fd;
 static int mac_map_fd;
 static uint8_t gwMAC[ETH_ALEN];
 static char tc_cmd[CMD_MAX_TC] = "tc";
@@ -35,7 +34,6 @@ static char tc_cmd[CMD_MAX_TC] = "tc";
 const char TCFile[] = "/etc/IPIPDirect/IPIPDirect_filter.o";
 
 // Maps.
-const char *map_interface = BASEDIR_MAPS "/interface_map";
 const char *map_mac = BASEDIR_MAPS "/mac_map";
 
 // Extern error number.
@@ -192,7 +190,7 @@ int main(int argc, char *argv[])
     // Check argument count.
     if (argc < 2)
     {
-        fprintf(stderr, "Usage: %s <Interface> [<Interface IP>]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <Interface>\n", argv[0]);
 
         exit(1);
     }
@@ -219,14 +217,7 @@ int main(int argc, char *argv[])
         exit(err);
     }
 
-    // Get maps.
-    interface_map_fd = open_map(map_interface);
-
-    if (interface_map_fd < 0)
-    {
-        exit(interface_map_fd);
-    }
-
+    // Get MAC map.
     mac_map_fd = open_map(map_mac);
 
     if (mac_map_fd < 0)
@@ -234,74 +225,8 @@ int main(int argc, char *argv[])
         exit(mac_map_fd);
     }
 
-    // Get IP address of interface and initialize starting variables.
-    int sockfd;
-    char *ip;
-    struct ifreq ifr;
-
-    // Make a temporary socket.
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-
-    // Check if socket is valid.
-    if (sockfd < 0)
-    {
-        fprintf(stderr, "Error creating socket to get IP address. Error => %s. Error Num => %d. Attempting to use command line.\n", strerror(errno), errno);
-
-        // Check if we have more than one argument.
-        if (argc < 3)
-        {
-            fprintf(stderr, "No IP specified.\n");
-            
-            exit(1);
-        }
-
-        // We do, so just make the interface IP that.
-        ip = argv[2];
-    }
-
-    // Check socket again.
-    if (sockfd)
-    {
-        // Start filling out ifr variable.
-        ifr.ifr_addr.sa_family = AF_INET;
-
-        // Copy interface name.
-        strcpy(ifr.ifr_name, argv[1]);
-
-        // To ioctl on socket to get IP address and check.
-        if (ioctl(sockfd, SIOCGIFADDR, &ifr) < 0)
-        {
-            fprintf(stderr, "Error using ioctl(). Error => %s. Error Num => %d. Resorting to command line.\n", strerror(errno), errno);
-
-            // Check if we have more than one argument.
-            if (argc < 3)
-            {
-                fprintf(stderr, "No IP specified.\n");
-                
-                exit(1);
-            }
-
-            // We do, so just make the interface IP that.
-            ip = argv[2];
-        }
-        else
-        {
-            // Assign IP to interface's IP.
-            ip = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
-        }
-    }
-
-    // Close temporary socket if open.
-    close(sockfd);
-
     // Get gateway MAC address and store it in gwMAC.
     GetGatewayMAC();
-
-    // Add IP to the "interface_map" BPF map.
-    uint32_t ipAddr = inet_addr(ip);
-    uint32_t key = 0;
-
-    bpf_map_update_elem(interface_map_fd, &key, &ipAddr, BPF_ANY);
 
     // Add gateway MAC address to the "mac_map" BPF map.
     uint64_t val;
@@ -317,7 +242,7 @@ int main(int argc, char *argv[])
     signal(SIGKILL, signHdl);
 
     // Debug.
-    fprintf(stdout, "Starting IPIP Direct TC egress program. Interface address => %s.\n", ip);
+    fprintf(stdout, "Starting IPIP Direct TC egress program.\n");
 
     // Loop!
     while (cont)
