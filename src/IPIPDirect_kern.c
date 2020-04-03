@@ -81,7 +81,7 @@ int tc_egress(struct __sk_buff *skb)
         }
 
         // Check for IPIP protocol.
-        if (likely(iphdr->protocol == IPPROTO_IPIP))
+        if (iphdr->protocol == IPPROTO_IPIP)
         {
             // Initialize inner IP header.            
             struct iphdr *inner_ip = data + sizeof(struct ethhdr) + sizeof(struct iphdr);
