@@ -49,7 +49,7 @@ systemctl stop IPIPDirect # Stop service.
 systemctl start IPIPDirect # Start service.
 ```
 
-## Kernel requirements.
+## Kernel Requirements
 Kernel >= 5.3 is required for this. Newer kernels add the `BPF_ADJ_ROOM_MAC` mode to the `bpf_skb_adjust_room()` function which is needed for this program to work correctly.
 
 ## Notes
