@@ -28,8 +28,8 @@ struct bpf_elf_map
     __u32 flags;
     __u32 id;
     __u32 pinning;
-	__u32 inner_id;
-	__u32 inner_idx;
+    __u32 inner_id;
+    __u32 inner_idx;
 };
 
 // Interface map for interface's IP address in decimal.
@@ -172,6 +172,7 @@ int tc_egress(struct __sk_buff *skb)
 
                 if (!val)
                 {
+                    // Print debug message. This can be found by performing 'cat /sys/kernel/debug/tracing/trace_pipe'.
                     printk("MAC map bad value.\n");
 
                     return TC_ACT_OK;
