@@ -25,7 +25,6 @@
 static uint8_t cont = 1;
 static int mac_map_fd;
 static uint8_t gwMAC[ETH_ALEN];
-static char tc_cmd[CMD_MAX_TC] = "tc";
 
 // TC program file name.
 const char TCFile[] = "/etc/IPIPDirect/IPIPDirect_filter.o";
@@ -102,7 +101,7 @@ int tc_egress_attach_bpf(const char *dev, const char *bpf_obj, const char *sec_n
     memset(&cmd, 0, CMD_MAX);
 
     // Format command.
-    snprintf(cmd, CMD_MAX, "%s qdisc del dev %s clsact 2> /dev/null", tc_cmd, dev);
+    snprintf(cmd, CMD_MAX, "tc qdisc del dev %s clsact 2> /dev/null", dev);
 
     // Call system command.
     ret = system(cmd);
@@ -119,7 +118,7 @@ int tc_egress_attach_bpf(const char *dev, const char *bpf_obj, const char *sec_n
     memset(&cmd, 0, CMD_MAX);
 
     // Format command.
-    snprintf(cmd, CMD_MAX, "%s qdisc add dev %s clsact", tc_cmd, dev);
+    snprintf(cmd, CMD_MAX, "tc qdisc add dev %s clsact", dev);
 
     // Call system command.
     ret = system(cmd);
@@ -138,7 +137,7 @@ int tc_egress_attach_bpf(const char *dev, const char *bpf_obj, const char *sec_n
     memset(&cmd, 0, CMD_MAX);
 
     // Format command.
-    snprintf(cmd, CMD_MAX, "%s filter add dev %s egress prio 1 handle 1 bpf da obj %s sec %s", tc_cmd, dev, bpf_obj, sec_name);
+    snprintf(cmd, CMD_MAX, "tc filter add dev %s egress prio 1 handle 1 bpf da obj %s sec %s", dev, bpf_obj, sec_name);
 
     // Call system command.
     ret = system(cmd);
@@ -165,7 +164,7 @@ int tc_remove_egress_filter(const char* dev)
     memset(&cmd, 0, CMD_MAX);
 
     // Format command.
-    snprintf(cmd, CMD_MAX, "%s filter delete dev %s egress", tc_cmd, dev);
+    snprintf(cmd, CMD_MAX, "tc filter delete dev %s egress", dev);
 
     // Call system command.
     ret = system(cmd);
@@ -221,7 +220,7 @@ int main(int argc, char *argv[])
     {
         // Attempt to remove TC filter since map failed.
         tc_remove_egress_filter(argv[1]);
-        
+
         exit(mac_map_fd);
     }
 
