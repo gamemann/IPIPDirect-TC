@@ -14,6 +14,9 @@
 #define __BPF__
 #endif
 
+// Uncomment this line if you want to exempt A2S_INFO responses from being sent directly. https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO
+//#define EXCLUDE_A2S_INFO
+
 #include "include/bpf_helpers.h"
 #include "include/common.h"
 
@@ -81,6 +84,34 @@ int tc_egress(struct __sk_buff *skb)
             {
                 return TC_ACT_SHOT;
             }
+
+            #ifdef EXCLUDE_A2S_INFO
+            // Before we move ahead, let's check for A2S_INFO response and exempt that from modification.
+            if (inner_ip->protocol == IPPROTO_UDP)
+            {
+                // Initialize UDP header.
+                struct udphdr *udphdr = data + sizeof(struct ethhdr) + sizeof(struct iphdr) + (inner_ip->ihl * 4);
+
+                // Check UDP header length.
+                if (unlikely(udphdr + 1 > (struct udphdr *)data_end))
+                {
+                    return TC_ACT_SHOT;
+                }
+
+                // Initialize UDP data.
+                uint8_t *pcktData = data + sizeof(struct ethhdr) + sizeof(struct iphdr) + (inner_ip->ihl * 4) + sizeof(struct udphdr);
+
+                // Check UDP data length.
+                if (!(pcktData + 5 > (uint8_t *)data_end))
+                {
+                    // Check first byte of data and see if it matches A2S_INFO response header. If it does, pass to upper layers and ignore packet modification.
+                    if ((*pcktData++) == 0xFF && (*pcktData++) == 0xFF && (*pcktData++) == 0xFF && (*pcktData++) == 0xFF && (*pcktData) == 0x49)
+                    {
+                        return TC_ACT_OK;
+                    }
+                }
+            }
+            #endif
 
             // Save inner IP source address for checksum calculation later on..
             uint32_t oldAddr;
