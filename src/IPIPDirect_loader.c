@@ -219,6 +219,9 @@ int main(int argc, char *argv[])
 
     if (mac_map_fd < 0)
     {
+        // Attempt to remove TC filter since map failed.
+        tc_remove_egress_filter(argv[1]);
+        
         exit(mac_map_fd);
     }
 
