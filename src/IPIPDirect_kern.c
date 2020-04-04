@@ -216,26 +216,6 @@ int tc_egress(struct __sk_buff *skb)
 
                     break;
                 }
-
-                case IPPROTO_ICMP:
-                {
-                    // Initialize ICMP header.
-                    struct icmphdr *icmphdr = data + sizeof(struct ethhdr) + (iphdr->ihl * 4);
-
-                    // Check ICMP header length.
-                    if (icmphdr + 1 > (struct icmphdr *)data_end)
-                    {
-                        return TC_ACT_SHOT;
-                    }
-
-                    // Get ICMP header checksum's offset.
-                    offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct icmphdr, checksum);
-
-                    // Recalculate layer four checksum (ICMP header).
-                    bpf_l4_csum_replace(skb, offset, oldAddr, iphdr->saddr, 0x10 | sizeof(iphdr->saddr));
-
-                    break;
-                }
             }
         }
     }
