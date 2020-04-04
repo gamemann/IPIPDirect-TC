@@ -7,10 +7,8 @@ A program made to attach to the TC hook using the egress filter. This program ma
 Usage is as follows:
 
 ```
-./IPIPDirect_Loader <Interface> [<Interface IP>]
+./IPIPDirect_Loader <Interface>
 ```
-
-You shouldn't need the second argument (Interface IP) since the program is supposed to get the interface's IP automatically.
 
 Example:
 
