@@ -32,7 +32,7 @@
 
 #define BASEDIR_MAPS "/sys/fs/bpf/tc/globals"
 
-uint64_t mac2int(const uint8_t hwaddr[])
+__always_inline uint64_t mac2int(const uint8_t hwaddr[])
 {
     int8_t i;
     uint64_t ret = 0;
@@ -46,7 +46,7 @@ uint64_t mac2int(const uint8_t hwaddr[])
     return ret;
 }
 
-void int2mac(const uint64_t mac, uint8_t *hwaddr)
+__always_inline void int2mac(const uint64_t mac, uint8_t *hwaddr)
 {
     int8_t i;
     uint8_t *p = hwaddr;
