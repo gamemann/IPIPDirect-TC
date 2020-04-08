@@ -17,6 +17,9 @@
 // Uncomment this line if you want to exempt A2S_INFO responses from being sent directly. https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO
 //#define EXCLUDE_A2S_INFO
 
+// Debug
+//#define DEBUG
+
 #include "include/bpf_helpers.h"
 #include "include/common.h"
 
@@ -178,8 +181,10 @@ int tc_egress(struct __sk_buff *skb)
 
             if (!val)
             {
+                #ifdef DEBUG
                 // Print debug message. This can be found by performing 'cat /sys/kernel/debug/tracing/trace_pipe'.
-                printk("MAC map bad value.\n");
+                //printk("MAC map bad value.\n");
+                #endif
 
                 return TC_ACT_OK;
             }

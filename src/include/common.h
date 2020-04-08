@@ -17,12 +17,14 @@
 #define ntohl(x) (x)
 #endif
 
+#ifdef DEBUG
 #ifndef printk
 # define printk(fmt, ...)                                      \
     ({                                                         \
         char ____fmt[] = fmt;                                  \
         trace_printk(____fmt, sizeof(____fmt), ##__VA_ARGS__); \
     })
+#endif
 #endif
 
 #ifndef offsetof
