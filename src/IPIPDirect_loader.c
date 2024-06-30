@@ -178,8 +178,6 @@ int tc_remove_egress_filter(int ifidx, struct bpf_object **obj)
         .ifindex = ifidx,
         .attach_point = BPF_TC_EGRESS
     );
-
-    DECLARE_LIBBPF_OPTS(bpf_tc_opts, opts, .prog_fd = 0, .prog_id = 0);
     
     if ((ret = bpf_tc_hook_destroy(&hook)) < 0)
     {
