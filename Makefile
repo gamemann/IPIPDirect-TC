@@ -1,33 +1,40 @@
 CC = clang
 
-objects += src/IPIPDirect_loader.o
+BUILD_DIR = build
+SRC_DIR = src
 
-libbpf_static_objects += src/include/libbpf/src/staticobjs/bpf.o src/include/libbpf/src/staticobjs/btf.o src/include/libbpf/src/staticobjs/libbpf_errno.o src/include/libbpf/src/staticobjs/libbpf_probes.o
-libbpf_static_objects += src/include/libbpf/src/staticobjs/libbpf.o src/include/libbpf/src/staticobjs/netlink.o src/include/libbpf/src/staticobjs/nlattr.o src/include/libbpf/src/staticobjs/str_error.o
-libbpf_static_objects += src/include/libbpf/src/staticobjs/hashmap.o src/include/libbpf/src/staticobjs/bpf_prog_linfo.o 
+LIBBPF_DIR = $(SRC_DIR)/include/libbpf
+LIBBPF_STATIC_DIR = $(LIBBPF_DIR)/src/staticobjs
+LIBBPF_SHARED_DIR = $(LIBBPF_DIR)/src/sharedobjs
 
-libbpf_shared_objects += src/include/libbpf/src/sharedobjs/bpf.o src/include/libbpf/src/sharedobjs/btf.o src/include/libbpf/src/sharedobjs/libbpf_errno.o src/include/libbpf/src/sharedobjs/libbpf_probes.o
-libbpf_shared_objects += src/include/libbpf/src/sharedobjs/libbpf.o src/include/libbpf/src/sharedobjs/netlink.o src/include/libbpf/src/sharedobjs/nlattr.o src/include/libbpf/src/sharedobjs/str_error.o
+OBJS += $(BUILD_DIR)/IPIPDirect_loader.o
 
-CFLAGS += -Isrc/include/libbpf/src -g -O2 -Wall -Werror
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/bpf.o $(LIBBPF_STATIC_DIR)/btf.o $(LIBBPF_STATIC_DIR)/libbpf_errno.o $(LIBBPF_STATIC_DIR)/libbpf_probes.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/libbpf.o $(LIBBPF_STATIC_DIR)/netlink.o $(LIBBPF_STATIC_DIR)/nlattr.o $(LIBBPF_STATIC_DIR)/str_error.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/hashmap.o $(LIBBPF_STATIC_DIR)/bpf_prog_linfo.o 
+
+LIBBPF_SHARED_OBJS += $(LIBBPF_SHARED_DIR)/bpf.o $(LIBBPF_SHARED_DIR)/btf.o $(LIBBPF_SHARED_DIR)/libbpf_errno.o $(LIBBPF_SHARED_DIR)/libbpf_probes.o
+LIBBPF_SHARED_OBJS += $(LIBBPF_SHARED_DIR)/libbpf.o $(LIBBPF_SHARED_DIR)/netlink.o $(LIBBPF_SHARED_DIR)/nlattr.o $(LIBBPF_SHARED_DIR)/str_error.o
+
+CFLAGS += -I$(LIBBPF_DIR)/src -g -O2 -Wall -Werror
 
 all: loader kern
 kern:
-	clang -D__BPF__ -Wall -Wextra -O2 -emit-llvm -c src/IPIPDirect_kern.c -o src/IPIPDirect_kern.bc
-	llc -march=bpf -filetype=obj src/IPIPDirect_kern.bc -o src/IPIPDirect_filter.o 
-loader: libbpf $(objects)
-	clang -lelf -lz -o src/IPIPDirect_loader $(libbpf_static_objects) $(objects)
+	$(CC) -D__BPF__ -Wall -Wextra -O2 -emit-llvm -c $(SRC_DIR)/IPIPDirect_kern.c -o $(BUILD_DIR)/IPIPDirect_kern.bc
+	llc -march=bpf -filetype=obj $(BUILD_DIR)/IPIPDirect_kern.bc -o $(BUILD_DIR)/IPIPDirect_filter.o 
+loader: libbpf
+	$(CC) -lelf -lz -o $(BUILD_DIR)/IPIPDirect_loader $(LIBBPF_STATIC_OBJS) $(SRC_DIR)/IPIPDirect_loader.c
 clean:
-	$(MAKE) -C src/include/libbpf/src clean
-	rm -f src/*.o
-	rm -f src/*.bc
-	rm -f src/IPIPDirect_loader
+	$(MAKE) -C $(LIBBPF_DIR)/src clean
+	rm -f $(BUILD_DIR)/*.o
+	rm -f $(BUILD_DIR)/*.bc
+	rm -f $(BUILD_DIR)/IPIPDirect_loader
 libbpf:
-	$(MAKE) -C src/include/libbpf/src
+	$(MAKE) -C $(LIBBPF_DIR)/src
 install:
 	mkdir -p /etc/IPIPDirect/
-	cp src/IPIPDirect_filter.o /etc/IPIPDirect/IPIPDirect_filter.o
-	cp src/IPIPDirect_loader /usr/bin/IPIPDirect_loader
+	cp $(BUILD_DIR)/IPIPDirect_filter.o /etc/IPIPDirect/IPIPDirect_filter.o
+	cp $(BUILD_DIR)/IPIPDirect_loader /usr/bin/IPIPDirect_loader
 	cp -n other/IPIPDirect.service /etc/systemd/system/IPIPDirect.service
 .PHONY: libbpf all
 .DEFAULT: all
