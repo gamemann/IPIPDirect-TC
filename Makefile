@@ -5,23 +5,21 @@ SRC_DIR = src
 
 LIBBPF_DIR = $(SRC_DIR)/include/libbpf
 LIBBPF_STATIC_DIR = $(LIBBPF_DIR)/src/staticobjs
-LIBBPF_SHARED_DIR = $(LIBBPF_DIR)/src/sharedobjs
 
-OBJS += $(BUILD_DIR)/IPIPDirect_loader.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/bpf_prog_linfo.o $(LIBBPF_STATIC_DIR)/bpf.o $(LIBBPF_STATIC_DIR)/btf_dump.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/btf_iter.o $(LIBBPF_STATIC_DIR)/btf_relocate.o $(LIBBPF_STATIC_DIR)/btf.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/elf.o $(LIBBPF_STATIC_DIR)/features.o $(LIBBPF_STATIC_DIR)/gen_loader.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/hashmap.o $(LIBBPF_STATIC_DIR)/libbpf_errno.o $(LIBBPF_STATIC_DIR)/libbpf_probes.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/libbpf.o $(LIBBPF_STATIC_DIR)/linker.o $(LIBBPF_STATIC_DIR)/netlink.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/nlattr.o $(LIBBPF_STATIC_DIR)/relo_core.o $(LIBBPF_STATIC_DIR)/ringbuf.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/str_error.o $(LIBBPF_STATIC_DIR)/strset.o $(LIBBPF_STATIC_DIR)/usdt.o
+LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/zip.o
 
-LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/bpf.o $(LIBBPF_STATIC_DIR)/btf.o $(LIBBPF_STATIC_DIR)/libbpf_errno.o $(LIBBPF_STATIC_DIR)/libbpf_probes.o
-LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/libbpf.o $(LIBBPF_STATIC_DIR)/netlink.o $(LIBBPF_STATIC_DIR)/nlattr.o $(LIBBPF_STATIC_DIR)/str_error.o
-LIBBPF_STATIC_OBJS += $(LIBBPF_STATIC_DIR)/hashmap.o $(LIBBPF_STATIC_DIR)/bpf_prog_linfo.o 
-
-LIBBPF_SHARED_OBJS += $(LIBBPF_SHARED_DIR)/bpf.o $(LIBBPF_SHARED_DIR)/btf.o $(LIBBPF_SHARED_DIR)/libbpf_errno.o $(LIBBPF_SHARED_DIR)/libbpf_probes.o
-LIBBPF_SHARED_OBJS += $(LIBBPF_SHARED_DIR)/libbpf.o $(LIBBPF_SHARED_DIR)/netlink.o $(LIBBPF_SHARED_DIR)/nlattr.o $(LIBBPF_SHARED_DIR)/str_error.o
-
-CFLAGS += -I$(LIBBPF_DIR)/src -g -O2 -Wall -Werror
+CFLAGS += -I$(LIBBPF_DIR)/src -g -O2
 
 all: loader kern
 kern:
-	$(CC) -D__BPF__ -Wall -Wextra -O2 -emit-llvm -c $(SRC_DIR)/IPIPDirect_kern.c -o $(BUILD_DIR)/IPIPDirect_kern.bc
-	llc -march=bpf -filetype=obj $(BUILD_DIR)/IPIPDirect_kern.bc -o $(BUILD_DIR)/IPIPDirect_filter.o 
+	$(CC) -O2 --target=bpf -g -c $(SRC_DIR)/IPIPDirect_kern.c -o $(BUILD_DIR)/IPIPDirect_filter.o
 loader: libbpf
 	$(CC) -lelf -lz -o $(BUILD_DIR)/IPIPDirect_loader $(LIBBPF_STATIC_OBJS) $(SRC_DIR)/IPIPDirect_loader.c
 clean:
