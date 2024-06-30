@@ -89,95 +89,105 @@ int open_map(const char *name)
     return fd;
 }
 
-int tc_egress_attach_bpf(const char *dev, const char *bpf_obj, const char *sec_name)
+void bpf_close_and_exit(struct bpf_object *obj, int ret)
 {
-    // Initialize variables.
-    char cmd[CMD_MAX];
-    int ret = 0;
+    bpf_object__close(obj);
 
-    // Delete clsact which also deletes existing filters.
-
-    // Set cmd to all 0's.
-    memset(&cmd, 0, CMD_MAX);
-
-    // Format command.
-    snprintf(cmd, CMD_MAX, "tc qdisc del dev %s clsact 2> /dev/null", dev);
-
-    // Call system command.
-    ret = system(cmd);
-
-    // Check if command executed.
-    if (!WIFEXITED(ret)) 
-    {
-        fprintf(stderr, "Error attaching TC egress filter. Cannot execute TC command when removing clsact. Command => %s and Return Error Number => %d.\n", cmd, WEXITSTATUS(ret));
-    }
-
-    // Create clsact.
-
-    // Set cmd to all 0's.
-    memset(&cmd, 0, CMD_MAX);
-
-    // Format command.
-    snprintf(cmd, CMD_MAX, "tc qdisc add dev %s clsact", dev);
-
-    // Call system command.
-    ret = system(cmd);
-
-    // Check if command executed.
-    if (ret) 
-    {
-        fprintf(stderr, "Error attaching TC egress filter. TC cannot create a clsact. Command => %s and Return Error Number => %d.\n", cmd, WEXITSTATUS(ret));
-
-        exit(1);
-    }
-
-    // Attach to egress filter.
-
-    // Set cmd to all 0's.
-    memset(&cmd, 0, CMD_MAX);
-
-    // Format command.
-    snprintf(cmd, CMD_MAX, "tc filter add dev %s egress prio 1 handle 1 bpf da obj %s sec %s", dev, bpf_obj, sec_name);
-
-    // Call system command.
-    ret = system(cmd);
-
-    // Check if command executed.
-    if (ret) 
-    {
-        fprintf(stderr, "Error attaching TC egress filter. TC cannot attach to filter. Command => %s and Return Error Number => %d.\n", cmd, WEXITSTATUS(ret));
-
-        exit(1);
-    }
-
-    // Return error or not.
-    return ret;
+    exit(ret);
 }
 
-int tc_remove_egress_filter(const char* dev)
+void tc_egress_attach_bpf(int ifidx, const char *obj_path, const char *prog_name, struct bpf_object **obj, struct bpf_program **prog)
 {
-    // Initialize starting variables.
-    char cmd[CMD_MAX];
-    int ret = 0;
+    int ret;
 
-    // Set cmd to all 0's.
-    memset(&cmd, 0, CMD_MAX);
+    *obj = bpf_object__open_file(obj_path, NULL);
 
-    // Format command.
-    snprintf(cmd, CMD_MAX, "tc filter delete dev %s egress", dev);
-
-    // Call system command.
-    ret = system(cmd);
-
-    // Check if command executed.
-    if (ret) 
+    if (!(*obj))
     {
-        fprintf(stderr, "Error detaching TC egress filter. Command => %s and Return Error Number => %d.\n", cmd, ret);
+        fprintf(stderr, "Error opening BPF object (%s). Error => %d (%s).\n", obj_path, errno, strerror(errno));
 
-        exit(1);
+        exit(errno);
+    }
+    
+    if (bpf_object__load(*obj) != 0)
+    {
+        fprintf(stderr, "Error loading BPF object into kernel. Error => %d (%s).\n", errno, strerror(errno));
+
+        bpf_close_and_exit(*obj, errno);
     }
 
-    // Return error or not.
+    // Try unpinning maps first.
+    bpf_object__unpin_maps(*obj, BASEDIR_MAPS);
+
+    // Pin maps.
+    bpf_object__pin_maps(*obj, BASEDIR_MAPS);
+
+    *prog = bpf_object__find_program_by_name(*obj, prog_name);
+
+    if (!(*prog))
+    {
+        fprintf(stderr, "Error loading BPF program with name 'tc_egress'. Error => %d (%s).\n", errno, strerror(errno));
+
+        bpf_close_and_exit(*obj, errno);
+    }
+
+    int fd = bpf_program__fd(*prog);
+
+    if (fd < 0)
+    {
+        fprintf(stderr, "BPF program FD is below 0! FD => %d.\n", fd);
+
+        bpf_close_and_exit(*obj, 1);
+    }
+
+    DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook,
+        .ifindex = ifidx,
+        .attach_point = BPF_TC_EGRESS
+    );
+
+    if ((ret = bpf_tc_hook_destroy(&hook)) < 0)
+    {
+        fprintf(stderr, "Warning! Failed to destroy TC hook. Return code => %d.\n", ret);
+    }
+
+    if ((ret = bpf_tc_hook_create(&hook)) < 0)
+    {
+        if (ret != -17)
+        {
+            fprintf(stderr, "Failed to create TC hook. Return code => %d.\n", ret);
+
+            bpf_close_and_exit(*obj, ret);
+        }
+    }
+
+    DECLARE_LIBBPF_OPTS(bpf_tc_opts, opts, .prog_fd = fd);
+
+    if ((ret = bpf_tc_attach(&hook, &opts)) < 0)
+    {
+        fprintf(stderr, "Failed to attach TC program. Return code => %d.\n", ret);
+
+        bpf_close_and_exit(*obj, errno);
+    }
+}
+
+int tc_remove_egress_filter(int ifidx, struct bpf_object **obj)
+{
+    int ret;
+
+    DECLARE_LIBBPF_OPTS(bpf_tc_hook, hook,
+        .ifindex = ifidx,
+        .attach_point = BPF_TC_EGRESS
+    );
+
+    DECLARE_LIBBPF_OPTS(bpf_tc_opts, opts, .prog_fd = 0, .prog_id = 0);
+    
+    if ((ret = bpf_tc_hook_destroy(&hook)) < 0)
+    {
+        fprintf(stderr, "Failed to detach TC program. Return code => %d.\n", ret);
+    }
+
+    bpf_object__close(*obj);
+
     return ret;
 }
 
@@ -205,13 +215,11 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Attempt to attach to egress filter.
-    err = tc_egress_attach_bpf(argv[1], TCFile, "egress");
+    struct bpf_object *obj = NULL;
+    struct bpf_program *prog = NULL;
 
-    if (err)
-    {
-        exit(err);
-    }
+    // Attempt to attach to egress filter.
+    tc_egress_attach_bpf(ifindex, TCFile, "tc_egress", &obj, &prog);
 
     // Get MAC map.
     mac_map_fd = open_map(map_mac);
@@ -219,9 +227,9 @@ int main(int argc, char *argv[])
     if (mac_map_fd < 0)
     {
         // Attempt to remove TC filter since map failed.
-        tc_remove_egress_filter(argv[1]);
+        err = tc_remove_egress_filter(ifindex, &obj);
 
-        exit(mac_map_fd);
+        exit(err);
     }
 
     // Get gateway MAC address and store it in gwMAC.
@@ -254,13 +262,7 @@ int main(int argc, char *argv[])
     fprintf(stdout, "Cleaning up...\n");
 
     // Remove TC egress filter.
-    err = tc_remove_egress_filter(argv[1]);
+    err = tc_remove_egress_filter(ifindex, &obj);
 
-    // Check for errors.
-    if (err)
-    {
-        exit(err);
-    }
-
-    exit(0);
+    exit(err);
 }

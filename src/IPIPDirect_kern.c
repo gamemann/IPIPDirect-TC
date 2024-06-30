@@ -10,9 +10,8 @@
 #include <linux/types.h>
 #include <inttypes.h>
 
-#ifndef __BPF__
-#define __BPF__
-#endif
+#include "include/common.h"
+#include "include/bpf_helpers.h"
 
 // Uncomment this line if you want to exempt A2S_INFO responses from being sent directly. https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO
 //#define EXCLUDE_A2S_INFO
@@ -20,35 +19,22 @@
 // Debug
 //#define DEBUG
 
-#include "include/bpf_helpers.h"
-#include "include/common.h"
+#define ETH_LEN sizeof(struct ethhdr)
 
-#define PIN_GLOBAL_NS 2
-
-struct bpf_elf_map 
-{
-    __u32 type;
-    __u32 size_key;
-    __u32 size_value;
-    __u32 max_elem;
-    __u32 flags;
-    __u32 id;
-    __u32 pinning;
-    __u32 inner_id;
-    __u32 inner_idx;
-};
+#define ETH_DEST_OFF (offsetof(struct ethhdr, h_dest))
+#define IP_CHECK_OFF (ETH_LEN + offsetof(struct iphdr, check))
+#define IP_SADDR_OFF (ETH_LEN + offsetof(struct iphdr, saddr))
 
 // MAC map for gateway interface's MAC address. The program only worked for me if I had the Ethernet header's destination MAC address set to the gateway.
-struct bpf_elf_map SEC("maps") mac_map =
+struct
 {
-    .type = BPF_MAP_TYPE_ARRAY,
-    .size_key = sizeof(uint32_t),
-    .size_value = sizeof(uint64_t),
-    .max_elem = 1,
-    .pinning = PIN_GLOBAL_NS
-};
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, uint32_t);
+    __type(value, uint64_t);
+} mac_map SEC(".maps");
 
-SEC("egress")
+SEC("tc/egress")
 int tc_egress(struct __sk_buff *skb)
 {
     // Initialize packet data.
@@ -88,7 +74,7 @@ int tc_egress(struct __sk_buff *skb)
                 return TC_ACT_SHOT;
             }
 
-            #ifdef EXCLUDE_A2S_INFO
+#ifdef EXCLUDE_A2S_INFO
             // Before we move ahead, let's check for A2S_INFO response and exempt that from modification.
             if (inner_ip->protocol == IPPROTO_UDP)
             {
@@ -114,14 +100,11 @@ int tc_egress(struct __sk_buff *skb)
                     }
                 }
             }
-            #endif
+#endif
 
             // Save inner IP source address for checksum calculation later on..
             uint32_t oldAddr;
             oldAddr = inner_ip->saddr;
-
-            // Initialize offset.
-            int offset;
 
             // Save forwarding address.
             uint32_t forwardAddr = iphdr->daddr;
@@ -144,8 +127,7 @@ int tc_egress(struct __sk_buff *skb)
             }
 
             // Recalculate layer three checksum (IP header).
-            offset = sizeof(struct ethhdr) + offsetof(struct iphdr, check);
-            bpf_l3_csum_replace(skb, offset, oldAddr, forwardAddr, sizeof(forwardAddr));
+            bpf_l3_csum_replace(skb, IP_CHECK_OFF, oldAddr, forwardAddr, sizeof(forwardAddr));
 
             // Reinitialize values.
             data_end = (void *)(long)skb->data_end;
@@ -159,8 +141,7 @@ int tc_egress(struct __sk_buff *skb)
             }
             
             // Change source address to forwarding address.
-            offset = sizeof(struct ethhdr) + offsetof(struct iphdr, saddr);
-            bpf_skb_store_bytes(skb, offset, &forwardAddr, sizeof(forwardAddr), 0);
+            bpf_skb_store_bytes(skb, IP_SADDR_OFF, &forwardAddr, sizeof(forwardAddr), 0);
 
             // Reinitialize values.
             data_end = (void *)(long)skb->data_end;
@@ -193,11 +174,8 @@ int tc_egress(struct __sk_buff *skb)
 
             int2mac(*val, dstMAC);
 
-            // Get offset of destination MAC in Ethernet header.
-            offset = offsetof(struct ethhdr, h_dest);
-
             // Replace destination MAC.
-            bpf_skb_store_bytes(skb, offset, &dstMAC, ETH_ALEN, 0);
+            bpf_skb_store_bytes(skb, ETH_DEST_OFF, &dstMAC, ETH_ALEN, 0);
 
             // Reinitialize values.
             data_end = (void *)(long)skb->data_end;
@@ -224,8 +202,7 @@ int tc_egress(struct __sk_buff *skb)
                         return TC_ACT_SHOT;
                     }
 
-                    // Get UDP header checksum's offset.
-                    offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct udphdr, check);
+                    uint32_t offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct udphdr, check);
 
                     // Recalculate layer four checksum (UDP checksum).
                     bpf_l4_csum_replace(skb, offset, oldAddr, iphdr->saddr, 0x10 | sizeof(iphdr->saddr));
@@ -245,7 +222,7 @@ int tc_egress(struct __sk_buff *skb)
                     }
 
                     // Get TCP header checksum's offset.
-                    offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct tcphdr, check);
+                    uint32_t offset = sizeof(struct ethhdr) + (iphdr->ihl * 4) + offsetof(struct tcphdr, check);
 
                     // Recalculate layer four checksum (TCP checksum).
                     bpf_l4_csum_replace(skb, offset, oldAddr, iphdr->saddr, 0x10 | sizeof(iphdr->saddr));
