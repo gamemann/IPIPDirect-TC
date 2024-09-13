@@ -1,7 +1,7 @@
 #pragma once
 
 #include <linux/bpf.h>
-#include <bpf/bpf_helpers.h>
+#include <bpf_helpers.h>
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
