@@ -19,7 +19,7 @@ CFLAGS += -I$(LIBBPF_DIR)/src -g -O2
 
 all: loader kern
 kern:
-	$(CC) -O2 --target=bpf -g -c $(SRC_DIR)/IPIPDirect_kern.c -o $(BUILD_DIR)/IPIPDirect_filter.o
+	$(CC) -I $(LIBBPF_DIR)/src -O2 --target=bpf -g -c $(SRC_DIR)/IPIPDirect_kern.c -o $(BUILD_DIR)/IPIPDirect_filter.o
 loader: libbpf
 	$(CC) -lelf -lz -o $(BUILD_DIR)/IPIPDirect_loader $(LIBBPF_STATIC_OBJS) $(SRC_DIR)/IPIPDirect_loader.c
 clean:
